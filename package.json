@@ -1,7 +1,6 @@
 {
   "name": "nomercy-bot",
   "version": "1.0.0",
-  "description": "AI Discord Roast Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

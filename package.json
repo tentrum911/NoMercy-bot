@@ -1,15 +1,16 @@
 {
   "name": "nomercy-bot",
   "version": "1.0.0",
-  "description": "Brutal roast discord bot",
+  "description": "AI Discord Roast Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-"dependencies": {
-  "discord.js": "^14.15.3",
-  "dotenv": "^16.4.5",
-  "express": "^4.19.2",
-  "node-fetch": "^2.6.7"
-}
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
+  }
 }

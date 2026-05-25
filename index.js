@@ -1,4 +1,4 @@
-  require("dotenv").config();
+require("dotenv").config();
 
 const {
   Client,
@@ -52,7 +52,7 @@ const genAI = new GoogleGenerativeAI(
 );
 
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-latest",
+  model: "gemini-1.5-flash",
 });
 
 // ================= MEMORY =================
@@ -72,21 +72,19 @@ function normalize(text) {
 function extractKeywords(text) {
   return normalize(text)
     .split(" ")
-    .filter((word) => word.length > 4)
+    .filter((w) => w.length > 4)
     .slice(0, 6);
 }
 
 function isRepeated(userId, reply) {
   const normalized = normalize(reply);
 
-  const userReplies =
+  const replies =
     recentReplies.get(userId) || [];
 
-  // exact repeat
-  if (userReplies.includes(normalized))
+  if (replies.includes(normalized))
     return true;
 
-  // keyword similarity
   const keywords = extractKeywords(reply);
 
   const oldKeywords =
@@ -100,7 +98,7 @@ function isRepeated(userId, reply) {
     }
   }
 
-  return matches >= 3;
+  return matches >= 2;
 }
 
 function saveReply(userId, reply) {
@@ -111,7 +109,7 @@ function saveReply(userId, reply) {
 
   replies.push(normalized);
 
-  if (replies.length > 30) {
+  if (replies.length > 40) {
     replies.shift();
   }
 
@@ -132,7 +130,7 @@ function saveReply(userId, reply) {
 
   recentKeywords.set(userId, keywords);
 
-  // clear after 1 hour
+  // clear memory after 1 hour
   setTimeout(() => {
     recentReplies.delete(userId);
     recentKeywords.delete(userId);
@@ -150,7 +148,7 @@ function isGifRepeated(gif) {
 function saveGif(gif) {
   recentGifs.push(gif);
 
-  if (recentGifs.length > 40) {
+  if (recentGifs.length > 50) {
     recentGifs.shift();
   }
 }
@@ -164,7 +162,7 @@ async function generateRoast(
 ) {
   try {
     const prompt = `
-You are NoMercy, an aggressive funny Discord roast bot.
+You are NoMercy, a savage funny Discord roast bot.
 
 TYPE:
 ${type}
@@ -175,19 +173,23 @@ ${username}
 MESSAGE:
 ${message}
 
-RULES:
-- Context based replies
-- Funny and brutal
-- Meme humor
+STRICT RULES:
+- Every reply MUST be unique
+- Never repeat sentence structures
+- Never repeat jokes
+- Never say:
+  "AI disconnected"
+  "NPC"
+  "side quest"
+  "braincells"
+  "wifi"
+  "loading screen"
+  "airplane mode"
+- Use internet meme humor
 - Human sounding
-- Never repeat replies
-- Never use same joke structure
-- Avoid repeating words like:
-  brain, npc, side quest, wifi,
-  loading screen, airplane mode
-- Internet humor
+- Context based
 - Short replies only
-- Maximum 2 lines
+- Max 2 lines
 - Light swearing allowed
 - Aggressive but funny
 - No racism
@@ -195,7 +197,6 @@ RULES:
 `;
 
     let response = "";
-
     let tries = 0;
 
     do {
@@ -209,16 +210,37 @@ RULES:
       tries++;
     } while (
       isRepeated(username, response) &&
-      tries < 7
+      tries < 10
     );
 
     saveReply(username, response);
 
     return response;
   } catch (err) {
-    console.log(err);
+    console.log(
+      "GEMINI ERROR:",
+      err
+    );
 
-    return "bro even AI disconnected after reading that 💀";
+    // backup replies if AI fails
+    const backups = [
+      "your existence lowers server FPS 💀",
+      "bro types like autocorrect gave up 😭",
+      "you sound downloadable 💀",
+      "your confidence needs parental controls 😭",
+      "even your shadow avoids association 💀",
+      "you type like a scam ad popup 😭",
+      "you look like expired DLC 💀",
+      "bro speaks in buffering 😭",
+      "you bring negative ping somehow 💀",
+      "your insults need software updates 😭",
+    ];
+
+    return backups[
+      Math.floor(
+        Math.random() * backups.length
+      )
+    ];
   }
 }
 
@@ -227,7 +249,7 @@ RULES:
 async function getGif(context) {
   try {
     const gifPrompt = `
-Give ONLY one meme GIF search keyword.
+Give ONLY one short meme GIF search keyword.
 
 MESSAGE:
 ${context}
@@ -235,12 +257,12 @@ ${context}
 Examples:
 - clown meme
 - emotional damage
-- crying meme
 - awkward meme
 - fail meme
-- bruh meme
-- angry cat
 - laughing meme
+- crying meme
+- angry cat
+- bruh meme
 
 ONLY RETURN SEARCH TERM.
 `;
@@ -269,7 +291,6 @@ ONLY RETURN SEARCH TERM.
     if (!data.data.length) return null;
 
     let gif;
-
     let tries = 0;
 
     do {
@@ -291,7 +312,10 @@ ONLY RETURN SEARCH TERM.
 
     return gif;
   } catch (err) {
-    console.log(err);
+    console.log(
+      "GIF ERROR:",
+      err
+    );
 
     return null;
   }
@@ -456,7 +480,7 @@ client.on(
         content.includes(word)
       )
     ) {
-      if (Math.random() < 0.1) {
+      if (Math.random() < 0.08) {
         const comeback =
           await generateRoast(
             "random comeback",
@@ -472,5 +496,4 @@ client.on(
 
 // ================= LOGIN =================
 
-client.login(process.env.TOKEN);          
-      
+client.login(process.env.TOKEN);

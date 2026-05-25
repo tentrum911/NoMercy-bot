@@ -1,4 +1,4 @@
-const express = require("express");
+        const express = require("express");
 const app = express();
 
 require("dotenv").config();
@@ -37,6 +37,15 @@ const fallbackRoasts = [
   "you look AI generated with low budget settings."
 ];
 
+// BOT REPLIES
+const mentionReplies = [
+  "bro summoned me like a side quest 💀",
+  "you again? tragic.",
+  "your messages lower server FPS.",
+  "i've seen smarter Instagram comments.",
+  "lightly insulting you is self care."
+];
+
 client.once("ready", () => {
   console.log(`${client.user.tag} is online.`);
 });
@@ -47,7 +56,7 @@ async function generateRoast(username) {
   try {
 
     const response = await fetch(
-      `https://evilinsult.com/generate_insult.php?lang=en&type=json`
+      "https://evilinsult.com/generate_insult.php?lang=en&type=json"
     );
 
     const data = await response.json();
@@ -70,14 +79,14 @@ client.on("messageCreate", async (message) => {
 
   const username = message.author.username;
 
-  // MEMORY TRACK
+  // CREATE MEMORY
   if (!userMemory[username]) {
     userMemory[username] = {
       roastCount: 0
     };
   }
 
-  // AUTO RANDOM ROAST
+  // RANDOM AUTO ROAST
   const randomChance = Math.floor(Math.random() * 18);
 
   if (randomChance === 1) {
@@ -95,14 +104,6 @@ client.on("messageCreate", async (message) => {
 
   // BOT MENTION
   if (message.mentions.has(client.user)) {
-
-    const mentionReplies = [
-      "bro summoned me like a side quest 💀",
-      "you again? tragic.",
-      "your messages lower server FPS.",
-      "i've seen smarter Instagram comments.",
-      "lightly insulting you is self care."
-    ];
 
     await message.channel.sendTyping();
 
@@ -125,6 +126,13 @@ client.on("messageCreate", async (message) => {
 
     if (!target) {
       return message.reply("mention someone 😭");
+    }
+
+    // FIXED MEMORY
+    if (!userMemory[target.username]) {
+      userMemory[target.username] = {
+        roastCount: 0
+      };
     }
 
     userMemory[target.username].roastCount++;
@@ -154,6 +162,13 @@ client.on("messageCreate", async (message) => {
 
     if (!target) {
       return message.reply("mention someone to destroy 💀");
+    }
+
+    // FIXED MEMORY
+    if (!userMemory[target.username]) {
+      userMemory[target.username] = {
+        roastCount: 0
+      };
     }
 
     userMemory[target.username].roastCount += 3;
@@ -192,6 +207,12 @@ client.on("messageCreate", async (message) => {
     const target =
       message.mentions.users.first() || message.author;
 
+    if (!userMemory[target.username]) {
+      userMemory[target.username] = {
+        roastCount: 0
+      };
+    }
+
     const stats = userMemory[target.username];
 
     message.reply(
@@ -203,16 +224,6 @@ client.on("messageCreate", async (message) => {
 client.login(process.env.TOKEN);
 
 // WEB SERVER
-app.get("/", (req, res) => {
-  res.send("NoMercy bot is alive");
-});
-
-app.listen(3000, () => {
-  console.log("Web server running");
-});
-client.login(process.env.TOKEN);
-
-// WEB SERVER FOR RENDER
 app.get("/", (req, res) => {
   res.send("NoMercy bot is alive");
 });

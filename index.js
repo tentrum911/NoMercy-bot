@@ -39,13 +39,9 @@ client.on("messageCreate", (message) => {
       roasts[Math.floor(Math.random() * roasts.length)];
 
     if (target) {
-      message.channel.send(
-        `${target} ${roast}`
-      );
+      message.channel.send(`${target} ${roast}`);
     } else {
-      message.reply(
-        `mention someone to roast 😭`
-      );
+      message.reply("mention someone to roast 😭");
     }
   }
 });

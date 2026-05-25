@@ -1,9 +1,9 @@
 const express = require("express");
 const app = express();
 
-require('dotenv').config();
+require("dotenv").config();
 
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -24,14 +24,14 @@ const roasts = [
   "Your opinions should come with trigger warnings for IQ loss."
 ];
 
-client.once('ready', () => {
+client.once("ready", () => {
   console.log(`${client.user.tag} is online.`);
 });
 
-client.on('messageCreate', (message) => {
+client.on("messageCreate", (message) => {
   if (message.author.bot) return;
 
-  if (message.content.startsWith('!roast')) {
+  if (message.content.startsWith("!roast")) {
     const roast =
       roasts[Math.floor(Math.random() * roasts.length)];
 

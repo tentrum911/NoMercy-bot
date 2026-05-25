@@ -15,7 +15,19 @@
 
   }
 }
+const express = require("express");
 
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("NoMercy is alive 😈");
+});
+
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Web server running on port ${PORT}`);
+});
 client.once("ready", () => {
 
   console.log(`${client.user.tag} is online.`);

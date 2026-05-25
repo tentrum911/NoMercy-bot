@@ -14,14 +14,14 @@ const client = new Client({
 });
 
 const roasts = [
-  "Your brain runs on airplane mode.",
-  "You're proof that confidence doesn't need intelligence.",
-  "Even autocorrect gave up on you.",
-  "You talk like a tutorial nobody asked for.",
-  "You're the reason mute buttons exist.",
-  "If stupidity burned calories you'd disappear.",
-  "You're built like a failed software update.",
-  "Your opinions should come with trigger warnings for IQ loss."
+  "has the personality of expired milk.",
+  "talks like their brain is buffering.",
+  "is proof evolution can go backwards.",
+  "has less intelligence than airplane food.",
+  "looks like a corrupted GTA character.",
+  "types like their keyboard is fighting for survival.",
+  "has confidence levels unsupported by reality.",
+  "sounds like a YouTube ad nobody can skip."
 ];
 
 client.once("ready", () => {
@@ -32,10 +32,21 @@ client.on("messageCreate", (message) => {
   if (message.author.bot) return;
 
   if (message.content.startsWith("!roast")) {
+
+    const target = message.mentions.users.first();
+
     const roast =
       roasts[Math.floor(Math.random() * roasts.length)];
 
-    message.reply(roast);
+    if (target) {
+      message.channel.send(
+        `${target} ${roast}`
+      );
+    } else {
+      message.reply(
+        `mention someone to roast 😭`
+      );
+    }
   }
 });
 

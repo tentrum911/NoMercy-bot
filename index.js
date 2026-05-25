@@ -1,5 +1,6 @@
 const express = require("express");
 const app = express();
+
 require('dotenv').config();
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -39,16 +40,7 @@ client.on('messageCreate', (message) => {
 });
 
 client.login(process.env.TOKEN);
-const express = require("express");
-const app = express();
 
-app.get("/", (req, res) => {
-  res.send("NoMercy bot is alive");
-});
-
-app.listen(3000, () => {
-  console.log("Web server running");
-});
 app.get("/", (req, res) => {
   res.send("NoMercy bot is alive");
 });

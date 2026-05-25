@@ -1,4 +1,4 @@
-        require("dotenv").config();
+  require("dotenv").config();
 
 const {
   Client,
@@ -14,7 +14,9 @@ const fetch = (...args) =>
     fetch(...args)
   );
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const {
+  GoogleGenerativeAI,
+} = require("@google/generative-ai");
 
 // ================= EXPRESS =================
 
@@ -27,7 +29,9 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Web server running on port ${PORT}`);
+  console.log(
+    `Web server running on port ${PORT}`
+  );
 });
 
 // ================= DISCORD =================
@@ -54,20 +58,90 @@ const model = genAI.getGenerativeModel({
 // ================= MEMORY =================
 
 const roastStats = {};
-const recentReplies = [];
-const recentGifs = [];
 
-function isRepeated(reply) {
-  return recentReplies.includes(reply);
+const recentReplies = new Map();
+const recentKeywords = new Map();
+
+function normalize(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/gi, "")
+    .trim();
 }
 
-function saveReply(reply) {
-  recentReplies.push(reply);
+function extractKeywords(text) {
+  return normalize(text)
+    .split(" ")
+    .filter((word) => word.length > 4)
+    .slice(0, 6);
+}
 
-  if (recentReplies.length > 80) {
-    recentReplies.shift();
+function isRepeated(userId, reply) {
+  const normalized = normalize(reply);
+
+  const userReplies =
+    recentReplies.get(userId) || [];
+
+  // exact repeat
+  if (userReplies.includes(normalized))
+    return true;
+
+  // keyword similarity
+  const keywords = extractKeywords(reply);
+
+  const oldKeywords =
+    recentKeywords.get(userId) || [];
+
+  let matches = 0;
+
+  for (const word of keywords) {
+    if (oldKeywords.includes(word)) {
+      matches++;
+    }
   }
+
+  return matches >= 3;
 }
+
+function saveReply(userId, reply) {
+  const normalized = normalize(reply);
+
+  const replies =
+    recentReplies.get(userId) || [];
+
+  replies.push(normalized);
+
+  if (replies.length > 30) {
+    replies.shift();
+  }
+
+  recentReplies.set(userId, replies);
+
+  // keywords
+  const keywords =
+    recentKeywords.get(userId) || [];
+
+  keywords.push(...extractKeywords(reply));
+
+  if (keywords.length > 120) {
+    keywords.splice(
+      0,
+      keywords.length - 120
+    );
+  }
+
+  recentKeywords.set(userId, keywords);
+
+  // clear after 1 hour
+  setTimeout(() => {
+    recentReplies.delete(userId);
+    recentKeywords.delete(userId);
+  }, 3600000);
+}
+
+// ================= GIF MEMORY =================
+
+const recentGifs = [];
 
 function isGifRepeated(gif) {
   return recentGifs.includes(gif);
@@ -76,7 +150,7 @@ function isGifRepeated(gif) {
 function saveGif(gif) {
   recentGifs.push(gif);
 
-  if (recentGifs.length > 50) {
+  if (recentGifs.length > 40) {
     recentGifs.shift();
   }
 }
@@ -90,7 +164,7 @@ async function generateRoast(
 ) {
   try {
     const prompt = `
-You are NoMercy, a savage funny Discord roast bot.
+You are NoMercy, an aggressive funny Discord roast bot.
 
 TYPE:
 ${type}
@@ -105,12 +179,17 @@ RULES:
 - Context based replies
 - Funny and brutal
 - Meme humor
-- Internet humor
 - Human sounding
 - Never repeat replies
+- Never use same joke structure
+- Avoid repeating words like:
+  brain, npc, side quest, wifi,
+  loading screen, airplane mode
+- Internet humor
 - Short replies only
 - Maximum 2 lines
 - Light swearing allowed
+- Aggressive but funny
 - No racism
 - No hate speech
 `;
@@ -129,17 +208,17 @@ RULES:
 
       tries++;
     } while (
-      isRepeated(response) &&
-      tries < 5
+      isRepeated(username, response) &&
+      tries < 7
     );
 
-    saveReply(response);
+    saveReply(username, response);
 
     return response;
   } catch (err) {
     console.log(err);
 
-    return "your brain crashed before the reply loaded 💀";
+    return "bro even AI disconnected after reading that 💀";
   }
 }
 
@@ -148,19 +227,20 @@ RULES:
 async function getGif(context) {
   try {
     const gifPrompt = `
-Give ONLY one short meme GIF search keyword.
+Give ONLY one meme GIF search keyword.
 
 MESSAGE:
 ${context}
 
 Examples:
-- crying meme
-- emotional damage
 - clown meme
-- npc meme
+- emotional damage
+- crying meme
 - awkward meme
 - fail meme
 - bruh meme
+- angry cat
+- laughing meme
 
 ONLY RETURN SEARCH TERM.
 `;
@@ -204,7 +284,7 @@ ONLY RETURN SEARCH TERM.
       tries++;
     } while (
       isGifRepeated(gif) &&
-      tries < 10
+      tries < 15
     );
 
     saveGif(gif);
@@ -235,7 +315,7 @@ client.once("ready", () => {
   });
 });
 
-// ================= MESSAGE EVENT =================
+// ================= EVENTS =================
 
 client.on(
   "messageCreate",
@@ -245,7 +325,7 @@ client.on(
     const content =
       message.content.toLowerCase();
 
-    // ================= STATS =================
+    // ================= !stats =================
 
     if (
       content.startsWith("!stats")
@@ -262,7 +342,7 @@ client.on(
       );
     }
 
-    // ================= ROAST =================
+    // ================= !roast =================
 
     if (
       content.startsWith("!roast")
@@ -289,7 +369,7 @@ client.on(
         );
 
       const gif =
-        await getGif(message.content);
+        await getGif(roast);
 
       return message.reply(
         `${target} ${roast}${
@@ -298,7 +378,7 @@ client.on(
       );
     }
 
-    // ================= DESTROY =================
+    // ================= !destroy =================
 
     if (
       content.startsWith("!destroy")
@@ -325,7 +405,7 @@ client.on(
         );
 
       const gif =
-        await getGif(message.content);
+        await getGif(destroy);
 
       return message.reply(
         `${target} ${destroy}${
@@ -351,7 +431,7 @@ client.on(
         );
 
       const gif =
-        await getGif(message.content);
+        await getGif(reply);
 
       return message.reply(
         `${reply}${
@@ -376,7 +456,7 @@ client.on(
         content.includes(word)
       )
     ) {
-      if (Math.random() < 0.12) {
+      if (Math.random() < 0.1) {
         const comeback =
           await generateRoast(
             "random comeback",
@@ -392,4 +472,5 @@ client.on(
 
 // ================= LOGIN =================
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN);          
+      

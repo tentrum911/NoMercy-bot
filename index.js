@@ -4,7 +4,7 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  ActivityType,
+  ActivityType
 } = require("discord.js");
 
 const express = require("express");
@@ -14,9 +14,7 @@ const fetch = (...args) =>
     fetch(...args)
   );
 
-const {
-  GoogleGenerativeAI,
-} = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
 // ================= EXPRESS =================
 
@@ -40,19 +38,15 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel]
 });
 
-// ================= GEMINI =================
+// ================= GROQ =================
 
-const genAI = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY
-);
-
-const model = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash",
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
 });
 
 // ================= MEMORY =================
@@ -63,6 +57,7 @@ const recentReplies = new Map();
 const recentGifs = [];
 
 function isRepeated(userId, text) {
+
   if (!recentReplies.has(userId)) {
     recentReplies.set(userId, []);
   }
@@ -74,6 +69,7 @@ function isRepeated(userId, text) {
 }
 
 function saveReply(userId, text) {
+
   if (!recentReplies.has(userId)) {
     recentReplies.set(userId, []);
   }
@@ -95,6 +91,7 @@ function isGifRepeated(gif) {
 }
 
 function saveGif(gif) {
+
   recentGifs.push(gif);
 
   if (recentGifs.length > 40) {
@@ -107,9 +104,11 @@ function saveGif(gif) {
 const cooldowns = new Map();
 
 function onCooldown(userId) {
+
   const now = Date.now();
 
   if (cooldowns.has(userId)) {
+
     const expiration =
       cooldowns.get(userId);
 
@@ -118,7 +117,7 @@ function onCooldown(userId) {
     }
   }
 
-  cooldowns.set(userId, now + 5000);
+  cooldowns.set(userId, now + 4000);
 
   return false;
 }
@@ -130,20 +129,18 @@ async function generateRoast(
   username,
   message
 ) {
+
   try {
-    const prompt = `
+
+    const completion =
+      await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `
 You are NoMercy, a savage funny Discord roast bot.
 
-TYPE:
-${type}
-
-USERNAME:
-${username}
-
-MESSAGE:
-${message}
-
-RULES:
+Rules:
 - Be unique every time
 - Never repeat replies
 - Use internet meme humor
@@ -155,33 +152,48 @@ RULES:
 - Light swearing allowed
 - No racism
 - No hate speech
-`;
+`
+          },
+          {
+            role: "user",
+            content: `
+TYPE:
+${type}
 
-    const result =
-      await model.generateContent(prompt);
+USERNAME:
+${username}
 
-    const response =
-      await result.response;
+MESSAGE:
+${message}
+`
+          }
+        ],
 
-    let text = response
-      .text()
+        model:
+          "llama-3.3-70b-versatile",
+
+        temperature: 1.3,
+
+        max_tokens: 80
+      });
+
+    return completion.choices[0]
+      .message.content
       .trim();
 
-    text = text.replace(/\n+/g, " ");
-
-    return text;
   } catch (err) {
+
     console.log(
-      "GEMINI ERROR:",
+      "GROQ ERROR:",
       err
     );
 
     const fallbacks = [
-      "Google HQ blocked your vibes 😭",
-      "AI cooling down after roasting too hard 💀",
-      "bro broke the AI again 😭",
-      "even AI got tired of this server 💀",
-      "Gemini rage quit after reading that 😭",
+      "bro roasted himself before I could 😭",
+      "your existence already doing my job 💀",
+      "AI refused to continue this conversation 😭",
+      "even Google couldn't fix your personality 💀",
+      "you type like expired software 😭"
     ];
 
     return fallbacks[
@@ -195,30 +207,42 @@ RULES:
 // ================= AI GIF =================
 
 async function getGif(context) {
-  try {
-    const prompt = `
-Give ONLY one meme GIF search keyword.
 
-MESSAGE:
+  try {
+
+    const keywordCompletion =
+      await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content:
+              "Return ONLY one meme GIF search keyword."
+          },
+          {
+            role: "user",
+            content: `
+Message:
 ${context}
 
 Examples:
-- crying meme
-- clown meme
-- awkward meme
-- emotional damage
-- fail meme
-- laughing meme
+crying meme
+clown meme
+awkward meme
+emotional damage
+laughing meme
+`
+          }
+        ],
 
-ONLY RETURN SEARCH TERM.
-`;
+        model:
+          "llama-3.3-70b-versatile",
 
-    const keywordResult =
-      await model.generateContent(prompt);
+        temperature: 1
+      });
 
     const keyword =
-      keywordResult.response
-        .text()
+      keywordCompletion.choices[0]
+        .message.content
         .trim();
 
     const response = await fetch(
@@ -237,6 +261,7 @@ ONLY RETURN SEARCH TERM.
     let attempts = 0;
 
     do {
+
       gif =
         data.data[
           Math.floor(
@@ -246,6 +271,7 @@ ONLY RETURN SEARCH TERM.
         ].images.original.url;
 
       attempts++;
+
     } while (
       isGifRepeated(gif) &&
       attempts < 10
@@ -254,7 +280,9 @@ ONLY RETURN SEARCH TERM.
     saveGif(gif);
 
     return gif;
+
   } catch (err) {
+
     console.log(
       "GIF ERROR:",
       err
@@ -267,6 +295,7 @@ ONLY RETURN SEARCH TERM.
 // ================= READY =================
 
 client.once("ready", () => {
+
   console.log(
     `${client.user.tag} is online 🔥`
   );
@@ -275,10 +304,11 @@ client.once("ready", () => {
     activities: [
       {
         name: "destroying egos 😈",
-        type: ActivityType.Playing,
-      },
+        type: ActivityType.Playing
+      }
     ],
-    status: "online",
+
+    status: "online"
   });
 });
 
@@ -287,6 +317,7 @@ client.once("ready", () => {
 client.on(
   "messageCreate",
   async (message) => {
+
     if (message.author.bot) return;
 
     const content =
@@ -303,6 +334,7 @@ client.on(
     if (
       content.startsWith("!stats")
     ) {
+
       const target =
         message.mentions.users.first() ||
         message.author;
@@ -320,10 +352,12 @@ client.on(
     if (
       content.startsWith("!roast")
     ) {
+
       const target =
         message.mentions.users.first();
 
       if (!target) {
+
         return message.reply(
           "mention someone to roast 💀"
         );
@@ -339,6 +373,7 @@ client.on(
       let attempts = 0;
 
       do {
+
         roast =
           await generateRoast(
             "ROAST",
@@ -347,6 +382,7 @@ client.on(
           );
 
         attempts++;
+
       } while (
         isRepeated(
           target.id,
@@ -366,7 +402,8 @@ client.on(
       return message.reply({
         content:
           `${target} ${roast}`,
-        files: gif ? [gif] : [],
+
+        files: gif ? [gif] : []
       });
     }
 
@@ -375,10 +412,12 @@ client.on(
     if (
       content.startsWith("!destroy")
     ) {
+
       const target =
         message.mentions.users.first();
 
       if (!target) {
+
         return message.reply(
           "mention someone to destroy 💀"
         );
@@ -394,6 +433,7 @@ client.on(
       let attempts = 0;
 
       do {
+
         destroy =
           await generateRoast(
             "DESTROY",
@@ -402,6 +442,7 @@ client.on(
           );
 
         attempts++;
+
       } while (
         isRepeated(
           target.id,
@@ -421,7 +462,8 @@ client.on(
       return message.reply({
         content:
           `${target} ${destroy}`,
-        files: gif ? [gif] : [],
+
+        files: gif ? [gif] : []
       });
     }
 
@@ -435,6 +477,7 @@ client.on(
         client.user
       )
     ) {
+
       await message.channel.sendTyping();
 
       let reply = "";
@@ -442,6 +485,7 @@ client.on(
       let attempts = 0;
 
       do {
+
         reply =
           await generateRoast(
             "SELF REPLY",
@@ -450,6 +494,7 @@ client.on(
           );
 
         attempts++;
+
       } while (
         isRepeated(
           message.author.id,
@@ -468,7 +513,7 @@ client.on(
 
       return message.reply({
         content: reply,
-        files: gif ? [gif] : [],
+        files: gif ? [gif] : []
       });
     }
 
@@ -480,6 +525,7 @@ client.on(
       );
 
     if (chance < 4) {
+
       const randomReply =
         await generateRoast(
           "RANDOM",
@@ -493,6 +539,7 @@ client.on(
           randomReply
         )
       ) {
+
         saveReply(
           message.author.id,
           randomReply
@@ -509,5 +556,4 @@ client.on(
 // ================= LOGIN =================
 
 client.login(process.env.TOKEN);
-      
-          
+                  

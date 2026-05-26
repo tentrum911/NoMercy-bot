@@ -23,7 +23,7 @@ const {
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("NoMercy bot is alive 😈");
+  res.send("NoMercy is alive 😈");
 });
 
 const PORT = process.env.PORT || 10000;
@@ -57,17 +57,18 @@ const model = genAI.getGenerativeModel({
 
 // ================= MEMORY =================
 
+const roastStats = {};
+
 const recentReplies = new Map();
 const recentGifs = [];
-const roastStats = {};
-const cooldowns = new Map();
 
 function isRepeated(userId, text) {
   if (!recentReplies.has(userId)) {
     recentReplies.set(userId, []);
   }
 
-  const history = recentReplies.get(userId);
+  const history =
+    recentReplies.get(userId);
 
   return history.includes(text);
 }
@@ -77,7 +78,8 @@ function saveReply(userId, text) {
     recentReplies.set(userId, []);
   }
 
-  const history = recentReplies.get(userId);
+  const history =
+    recentReplies.get(userId);
 
   history.push(text);
 
@@ -95,17 +97,38 @@ function isGifRepeated(gif) {
 function saveGif(gif) {
   recentGifs.push(gif);
 
-  if (recentGifs.length > 50) {
+  if (recentGifs.length > 40) {
     recentGifs.shift();
   }
+}
+
+// ================= COOLDOWN =================
+
+const cooldowns = new Map();
+
+function onCooldown(userId) {
+  const now = Date.now();
+
+  if (cooldowns.has(userId)) {
+    const expiration =
+      cooldowns.get(userId);
+
+    if (now < expiration) {
+      return true;
+    }
+  }
+
+  cooldowns.set(userId, now + 5000);
+
+  return false;
 }
 
 // ================= AI ROAST =================
 
 async function generateRoast(
   type,
-  userInput,
-  userId
+  username,
+  message
 ) {
   try {
     const prompt = `
@@ -114,135 +137,106 @@ You are NoMercy, a savage funny Discord roast bot.
 TYPE:
 ${type}
 
-MESSAGE:
-${userInput}
+USERNAME:
+${username}
 
-STRICT RULES:
+MESSAGE:
+${message}
+
+RULES:
 - Be unique every time
 - Never repeat replies
-- Context based humor
+- Use internet meme humor
 - Human sounding
-- Internet meme humor
-- Gen Z humor
-- Light swearing allowed
-- Maximum 2 lines
+- Context aware
 - Funny and brutal
+- Short replies only
+- Maximum 2 lines
+- Light swearing allowed
 - No racism
 - No hate speech
-- Avoid repeating same joke structure
 `;
 
-    let text = "";
-    let attempts = 0;
+    const result =
+      await model.generateContent(prompt);
 
-    do {
-      const result =
-        await model.generateContent(prompt);
+    const response =
+      await result.response;
 
-      const response =
-        await result.response;
+    let text = response
+      .text()
+      .trim();
 
-      text = response.text().trim();
-
-      text = text.replace(/\n+/g, " ");
-
-      attempts++;
-    } while (
-      isRepeated(userId, text) &&
-      attempts < 7
-    );
-
-    saveReply(userId, text);
+    text = text.replace(/\n+/g, " ");
 
     return text;
-
   } catch (err) {
-
     console.log(
       "GEMINI ERROR:",
       err
     );
 
-    const backups = [
-      "bro scared the AI away 💀",
-      "Gemini crashed after reading that 😭",
-      "even Google gave up on you 💀",
-      "AI needs therapy after this 😭",
-      "bro bullied the servers 💀",
-      "your aura got rate limited 😭",
-      "AI disconnected for mental health reasons 💀",
+    const fallbacks = [
       "Google HQ blocked your vibes 😭",
-      "bro broke reality itself 💀",
-      "even the AI said hell nah 😭"
+      "AI cooling down after roasting too hard 💀",
+      "bro broke the AI again 😭",
+      "even AI got tired of this server 💀",
+      "Gemini rage quit after reading that 😭",
     ];
 
-    return backups[
+    return fallbacks[
       Math.floor(
-        Math.random() * backups.length
+        Math.random() * fallbacks.length
       )
     ];
   }
 }
 
-// ================= GIF SYSTEM =================
+// ================= AI GIF =================
 
-async function getGif(query) {
-
+async function getGif(context) {
   try {
+    const prompt = `
+Give ONLY one meme GIF search keyword.
 
-    const keywordPrompt = `
-Give ONLY one short meme gif search keyword.
-
-Message:
-${query}
+MESSAGE:
+${context}
 
 Examples:
-- clown meme
-- emotional damage
-- awkward meme
-- laughing meme
 - crying meme
+- clown meme
+- awkward meme
+- emotional damage
 - fail meme
-- bruh meme
+- laughing meme
 
 ONLY RETURN SEARCH TERM.
 `;
 
     const keywordResult =
-      await model.generateContent(
-        keywordPrompt
-      );
+      await model.generateContent(prompt);
 
     const keyword =
       keywordResult.response
         .text()
         .trim();
 
-    console.log(
-      "GIF SEARCH:",
-      keyword
-    );
-
     const response = await fetch(
       `https://api.giphy.com/v1/gifs/search?api_key=${process.env.GIPHY_API_KEY}&q=${encodeURIComponent(
         keyword
-      )}&limit=40&rating=pg13`
+      )}&limit=25`
     );
 
     const data = await response.json();
 
-    if (
-      !data.data ||
-      !data.data.length
-    ) {
+    if (!data.data.length)
       return null;
-    }
 
     let gif;
-    let tries = 0;
+
+    let attempts = 0;
 
     do {
-
       gif =
         data.data[
           Math.floor(
@@ -251,19 +245,16 @@ ONLY RETURN SEARCH TERM.
           )
         ].images.original.url;
 
-      tries++;
-
+      attempts++;
     } while (
       isGifRepeated(gif) &&
-      tries < 10
+      attempts < 10
     );
 
     saveGif(gif);
 
     return gif;
-
   } catch (err) {
-
     console.log(
       "GIF ERROR:",
       err
@@ -276,7 +267,6 @@ ONLY RETURN SEARCH TERM.
 // ================= READY =================
 
 client.once("ready", () => {
-
   console.log(
     `${client.user.tag} is online 🔥`
   );
@@ -290,52 +280,29 @@ client.once("ready", () => {
     ],
     status: "online",
   });
-
 });
 
-// ================= MESSAGE EVENT =================
+// ================= EVENTS =================
 
 client.on(
   "messageCreate",
   async (message) => {
-
     if (message.author.bot) return;
-
-    // ================= COOLDOWN =================
-
-    const now = Date.now();
-
-    if (
-      cooldowns.has(message.author.id)
-    ) {
-
-      const expiration =
-        cooldowns.get(
-          message.author.id
-        );
-
-      if (now < expiration) {
-
-        return message.reply(
-          "slow down mf you're bullying the AI 😭"
-        );
-      }
-    }
-
-    cooldowns.set(
-      message.author.id,
-      now + 5000
-    );
 
     const content =
       message.content.toLowerCase();
+
+    if (
+      onCooldown(message.author.id)
+    ) {
+      return;
+    }
 
     // ================= STATS =================
 
     if (
       content.startsWith("!stats")
     ) {
-
       const target =
         message.mentions.users.first() ||
         message.author;
@@ -353,12 +320,10 @@ client.on(
     if (
       content.startsWith("!roast")
     ) {
-
       const target =
         message.mentions.users.first();
 
       if (!target) {
-
         return message.reply(
           "mention someone to roast 💀"
         );
@@ -369,12 +334,31 @@ client.on(
 
       await message.channel.sendTyping();
 
-      const roast =
-        await generateRoast(
-          "ROAST",
-          `${message.author.username} wants to roast ${target.username}`,
-          target.id
-        );
+      let roast = "";
+
+      let attempts = 0;
+
+      do {
+        roast =
+          await generateRoast(
+            "ROAST",
+            target.username,
+            message.content
+          );
+
+        attempts++;
+      } while (
+        isRepeated(
+          target.id,
+          roast
+        ) &&
+        attempts < 6
+      );
+
+      saveReply(
+        target.id,
+        roast
+      );
 
       const gif =
         await getGif(roast);
@@ -382,7 +366,7 @@ client.on(
       return message.reply({
         content:
           `${target} ${roast}`,
-        files: gif ? [gif] : []
+        files: gif ? [gif] : [],
       });
     }
 
@@ -391,12 +375,10 @@ client.on(
     if (
       content.startsWith("!destroy")
     ) {
-
       const target =
         message.mentions.users.first();
 
       if (!target) {
-
         return message.reply(
           "mention someone to destroy 💀"
         );
@@ -407,12 +389,31 @@ client.on(
 
       await message.channel.sendTyping();
 
-      const destroy =
-        await generateRoast(
-          "DESTROY",
-          `${message.author.username} brutally destroying ${target.username}`,
-          target.id
-        );
+      let destroy = "";
+
+      let attempts = 0;
+
+      do {
+        destroy =
+          await generateRoast(
+            "DESTROY",
+            target.username,
+            message.content
+          );
+
+        attempts++;
+      } while (
+        isRepeated(
+          target.id,
+          destroy
+        ) &&
+        attempts < 6
+      );
+
+      saveReply(
+        target.id,
+        destroy
+      );
 
       const gif =
         await getGif(destroy);
@@ -420,49 +421,70 @@ client.on(
       return message.reply({
         content:
           `${target} ${destroy}`,
-        files: gif ? [gif] : []
+        files: gif ? [gif] : [],
       });
     }
 
     // ================= SELF REPLY =================
 
     if (
-      content.includes("nomercy") ||
-      message.mentions.has(client.user)
+      content.includes(
+        "nomercy"
+      ) ||
+      message.mentions.has(
+        client.user
+      )
     ) {
-
       await message.channel.sendTyping();
 
-      const reply =
-        await generateRoast(
-          "SELF REPLY",
-          message.content,
-          message.author.id
-        );
+      let reply = "";
+
+      let attempts = 0;
+
+      do {
+        reply =
+          await generateRoast(
+            "SELF REPLY",
+            message.author.username,
+            message.content
+          );
+
+        attempts++;
+      } while (
+        isRepeated(
+          message.author.id,
+          reply
+        ) &&
+        attempts < 6
+      );
+
+      saveReply(
+        message.author.id,
+        reply
+      );
 
       const gif =
         await getGif(reply);
 
       return message.reply({
         content: reply,
-        files: gif ? [gif] : []
+        files: gif ? [gif] : [],
       });
     }
 
     // ================= RANDOM REPLY =================
 
-    const randomChance =
+    const chance =
       Math.floor(
         Math.random() * 100
       );
 
-    if (randomChance < 5) {
-
+    if (chance < 4) {
       const randomReply =
         await generateRoast(
-          "RANDOM REPLY",
-          message.content,
-          message.author.id
+          "RANDOM",
+          message.author.username,
+          message.content
         );
 
       if (
@@ -471,7 +493,6 @@ client.on(
           randomReply
         )
       ) {
-
         saveReply(
           message.author.id,
           randomReply
@@ -488,3 +509,5 @@ client.on(
 // ================= LOGIN =================
 
 client.login(process.env.TOKEN);
+      
+          

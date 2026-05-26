@@ -1,499 +1,327 @@
-require("dotenv").config();
+   require("dotenv").config();
 
 const {
   Client,
   GatewayIntentBits,
-  Partials,
-  ActivityType,
+  Partials
 } = require("discord.js");
 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const fetch = require("node-fetch");
+
 const express = require("express");
-
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) =>
-    fetch(...args)
-  );
-
-const {
-  GoogleGenerativeAI,
-} = require("@google/generative-ai");
-
-// ================= EXPRESS =================
 
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("NoMercy is alive 😈");
+  res.send("NoMercy bot is alive 🔥");
 });
 
 const PORT = process.env.PORT || 10000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `Web server running on port ${PORT}`
-  );
+app.listen(PORT, () => {
+  console.log(`Web server running on port ${PORT}`);
 });
 
-// ================= DISCORD =================
+// =========================
+// DISCORD CLIENT
+// =========================
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel]
 });
 
-// ================= GEMINI =================
+// =========================
+// GEMINI AI
+// =========================
 
 const genAI = new GoogleGenerativeAI(
   process.env.GEMINI_API_KEY
 );
 
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
+  model: "gemini-2.0-flash"
 });
 
-// ================= MEMORY =================
-
-const roastStats = {};
+// =========================
+// MEMORY SYSTEM
+// =========================
 
 const recentReplies = new Map();
-const recentKeywords = new Map();
 
-function normalize(text) {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/gi, "")
-    .trim();
-}
-
-function extractKeywords(text) {
-  return normalize(text)
-    .split(" ")
-    .filter((w) => w.length > 4)
-    .slice(0, 6);
-}
-
-function isRepeated(userId, reply) {
-  const normalized = normalize(reply);
-
-  const replies =
-    recentReplies.get(userId) || [];
-
-  if (replies.includes(normalized))
-    return true;
-
-  const keywords = extractKeywords(reply);
-
-  const oldKeywords =
-    recentKeywords.get(userId) || [];
-
-  let matches = 0;
-
-  for (const word of keywords) {
-    if (oldKeywords.includes(word)) {
-      matches++;
-    }
+function isRepeated(userId, text) {
+  if (!recentReplies.has(userId)) {
+    recentReplies.set(userId, []);
   }
 
-  return matches >= 2;
+  const history = recentReplies.get(userId);
+
+  return history.includes(text);
 }
 
-function saveReply(userId, reply) {
-  const normalized = normalize(reply);
-
-  const replies =
-    recentReplies.get(userId) || [];
-
-  replies.push(normalized);
-
-  if (replies.length > 40) {
-    replies.shift();
+function saveReply(userId, text) {
+  if (!recentReplies.has(userId)) {
+    recentReplies.set(userId, []);
   }
 
-  recentReplies.set(userId, replies);
+  const history = recentReplies.get(userId);
 
-  // keywords
-  const keywords =
-    recentKeywords.get(userId) || [];
+  history.push(text);
 
-  keywords.push(...extractKeywords(reply));
-
-  if (keywords.length > 120) {
-    keywords.splice(
-      0,
-      keywords.length - 120
-    );
+  if (history.length > 20) {
+    history.shift();
   }
 
-  recentKeywords.set(userId, keywords);
-
-  // clear memory after 1 hour
-  setTimeout(() => {
-    recentReplies.delete(userId);
-    recentKeywords.delete(userId);
-  }, 3600000);
+  recentReplies.set(userId, history);
 }
 
-// ================= GIF MEMORY =================
+// =========================
+// GENERATE AI ROAST
+// =========================
 
-const recentGifs = [];
-
-function isGifRepeated(gif) {
-  return recentGifs.includes(gif);
-}
-
-function saveGif(gif) {
-  recentGifs.push(gif);
-
-  if (recentGifs.length > 50) {
-    recentGifs.shift();
-  }
-}
-
-// ================= AI ROAST =================
-
-async function generateRoast(
-  type,
-  username,
-  message
-) {
+async function generateRoast(promptType, userInput) {
   try {
     const prompt = `
 You are NoMercy, a savage funny Discord roast bot.
 
-TYPE:
-${type}
+Rules:
+- Be short
+- Be unique every time
+- Never repeat lines
+- Roast based on context
+- Use internet/gaming/genz humor
+- No essays
+- Max 1-2 lines
+- Add emojis sometimes
+- Don't be wholesome
+- Don't explain joke
 
-USERNAME:
-${username}
+Type: ${promptType}
 
-MESSAGE:
-${message}
-
-STRICT RULES:
-- Every reply MUST be unique
-- Never repeat sentence structures
-- Never repeat jokes
-- Never say:
-  "AI disconnected"
-  "NPC"
-  "side quest"
-  "braincells"
-  "wifi"
-  "loading screen"
-  "airplane mode"
-- Use internet meme humor
-- Human sounding
-- Context based
-- Short replies only
-- Max 2 lines
-- Light swearing allowed
-- Aggressive but funny
-- No racism
-- No hate speech
+Context:
+${userInput}
 `;
 
-    let response = "";
-    let tries = 0;
+    const result = await model.generateContent(prompt);
 
-    do {
-      const result =
-        await model.generateContent(prompt);
+    const response = await result.response;
 
-      response = result.response
-        .text()
-        .trim();
+    let text = response.text().trim();
 
-      tries++;
-    } while (
-      isRepeated(username, response) &&
-      tries < 10
-    );
+    text = text.replace(/\n+/g, " ");
 
-    saveReply(username, response);
+    return text;
 
-    return response;
   } catch (err) {
-    console.log(
-      "GEMINI ERROR:",
-      err
-    );
+    console.log("GEMINI ERROR:", err);
 
-    // backup replies if AI fails
-    const backups = [
-      "your existence lowers server FPS 💀",
-      "bro types like autocorrect gave up 😭",
-      "you sound downloadable 💀",
-      "your confidence needs parental controls 😭",
-      "even your shadow avoids association 💀",
-      "you type like a scam ad popup 😭",
-      "you look like expired DLC 💀",
-      "bro speaks in buffering 😭",
-      "you bring negative ping somehow 💀",
-      "your insults need software updates 😭",
-    ];
-
-    return backups[
-      Math.floor(
-        Math.random() * backups.length
-      )
-    ];
+    return "bro broke the AI again 💀";
   }
 }
 
-// ================= AI GIF =================
+// =========================
+// GIPHY
+// =========================
 
-async function getGif(context) {
+async function getGif(query) {
   try {
-    const gifPrompt = `
-Give ONLY one short meme GIF search keyword.
+    const url =
+      `https://api.giphy.com/v1/gifs/search?api_key=${process.env.GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=25`;
 
-MESSAGE:
-${context}
-
-Examples:
-- clown meme
-- emotional damage
-- awkward meme
-- fail meme
-- laughing meme
-- crying meme
-- angry cat
-- bruh meme
-
-ONLY RETURN SEARCH TERM.
-`;
-
-    const keywordResult =
-      await model.generateContent(gifPrompt);
-
-    const keyword =
-      keywordResult.response
-        .text()
-        .trim();
-
-    console.log(
-      "GIF SEARCH:",
-      keyword
-    );
-
-    const response = await fetch(
-      `https://api.giphy.com/v1/gifs/search?api_key=${process.env.GIPHY_API_KEY}&q=${encodeURIComponent(
-        keyword
-      )}&limit=50&rating=pg13`
-    );
+    const response = await fetch(url);
 
     const data = await response.json();
 
-    if (!data.data.length) return null;
+    if (!data.data || !data.data.length) {
+      return null;
+    }
 
-    let gif;
-    let tries = 0;
+    const randomGif =
+      data.data[
+        Math.floor(Math.random() * data.data.length)
+      ];
 
-    do {
-      gif =
-        data.data[
-          Math.floor(
-            Math.random() *
-              data.data.length
-          )
-        ].images.original.url;
+    return randomGif.images.original.url;
 
-      tries++;
-    } while (
-      isGifRepeated(gif) &&
-      tries < 15
-    );
-
-    saveGif(gif);
-
-    return gif;
   } catch (err) {
-    console.log(
-      "GIF ERROR:",
-      err
-    );
+    console.log("GIF ERROR:", err);
 
     return null;
   }
 }
 
-// ================= READY =================
+// =========================
+// READY EVENT
+// =========================
 
 client.once("ready", () => {
-  console.log(
-    `${client.user.tag} is online.`
-  );
-
-  client.user.setPresence({
-    activities: [
-      {
-        name: "destroying egos 😈",
-        type: ActivityType.Playing,
-      },
-    ],
-    status: "online",
-  });
+  console.log(`${client.user.tag} is online 🔥`);
 });
 
-// ================= EVENTS =================
+// =========================
+// MESSAGE EVENT
+// =========================
 
-client.on(
-  "messageCreate",
-  async (message) => {
-    if (message.author.bot) return;
+client.on("messageCreate", async (message) => {
 
-    const content =
-      message.content.toLowerCase();
+  if (message.author.bot) return;
 
-    // ================= !stats =================
+  const content = message.content.toLowerCase();
 
-    if (
-      content.startsWith("!stats")
-    ) {
-      const target =
-        message.mentions.users.first() ||
-        message.author;
+  // =========================
+  // ROAST COMMAND
+  // =========================
 
-      const count =
-        roastStats[target.id] || 0;
+  if (content.startsWith("!roast")) {
 
+    const target =
+      message.mentions.users.first();
+
+    if (!target) {
       return message.reply(
-        `${target.username} has been roasted ${count} times 💀`
+        "mention someone to roast 💀"
       );
     }
 
-    // ================= !roast =================
+    await message.channel.sendTyping();
 
-    if (
-      content.startsWith("!roast")
-    ) {
-      const target =
-        message.mentions.users.first();
+    let roast = "";
+    let attempts = 0;
 
-      if (!target) {
-        return message.reply(
-          "mention someone to roast 💀"
-        );
-      }
+    do {
 
-      roastStats[target.id] =
-        (roastStats[target.id] || 0) + 1;
+      roast = await generateRoast(
+        "ROAST",
+        `${message.author.username} wants to roast ${target.username}`
+      );
 
-      await message.channel.sendTyping();
+      attempts++;
 
-      const roast =
-        await generateRoast(
-          "funny roast",
-          target.username,
-          message.content
-        );
+    } while (
+      isRepeated(target.id, roast) &&
+      attempts < 6
+    );
 
-      const gif =
-        await getGif(roast);
+    saveReply(target.id, roast);
 
+    const gif = await getGif(roast);
+
+    return message.reply({
+      content:
+        `${target} ${roast}`,
+      files: gif ? [gif] : []
+    });
+  }
+
+  // =========================
+  // DESTROY COMMAND
+  // =========================
+
+  if (content.startsWith("!destroy")) {
+
+    const target =
+      message.mentions.users.first();
+
+    if (!target) {
       return message.reply(
-        `${target} ${roast}${
-          gif ? `\n\n${gif}` : ""
-        }`
+        "mention someone to destroy 💀"
       );
     }
 
-    // ================= !destroy =================
+    await message.channel.sendTyping();
 
-    if (
-      content.startsWith("!destroy")
-    ) {
-      const target =
-        message.mentions.users.first();
+    let destroy = "";
+    let attempts = 0;
 
-      if (!target) {
-        return message.reply(
-          "mention someone to destroy 💀"
-        );
-      }
+    do {
 
-      roastStats[target.id] =
-        (roastStats[target.id] || 0) + 1;
-
-      await message.channel.sendTyping();
-
-      const destroy =
-        await generateRoast(
-          "brutal destroy",
-          target.username,
-          message.content
-        );
-
-      const gif =
-        await getGif(destroy);
-
-      return message.reply(
-        `${target} ${destroy}${
-          gif ? `\n\n${gif}` : ""
-        }`
+      destroy = await generateRoast(
+        "DESTROY",
+        `${message.author.username} wants to brutally destroy ${target.username}`
       );
-    }
 
-    // ================= SELF MENTION =================
+      attempts++;
 
-    if (
-      message.mentions.has(client.user) &&
-      !content.startsWith("!roast") &&
-      !content.startsWith("!destroy")
-    ) {
-      await message.channel.sendTyping();
+    } while (
+      isRepeated(target.id, destroy) &&
+      attempts < 6
+    );
 
-      const reply =
-        await generateRoast(
-          "self mention",
-          message.author.username,
-          message.content
-        );
+    saveReply(target.id, destroy);
 
-      const gif =
-        await getGif(reply);
+    const gif = await getGif(destroy);
 
-      return message.reply(
-        `${reply}${
-          gif ? `\n\n${gif}` : ""
-        }`
+    return message.reply({
+      content:
+        `${target} ${destroy}`,
+      files: gif ? [gif] : []
+    });
+  }
+
+  // =========================
+  // SELF MENTIONING
+  // =========================
+
+  if (
+    content.includes("nomercy") ||
+    message.mentions.has(client.user)
+  ) {
+
+    await message.channel.sendTyping();
+
+    let reply = "";
+    let attempts = 0;
+
+    do {
+
+      reply = await generateRoast(
+        "SELF REPLY",
+        `User said: ${message.content}`
       );
-    }
 
-    // ================= RANDOM COMEBACK =================
+      attempts++;
 
-    const triggerWords = [
-      "bot",
-      "nomercy",
-      "trash",
-      "ugly",
-      "stupid",
-      "loser",
-    ];
+    } while (
+      isRepeated(message.author.id, reply) &&
+      attempts < 6
+    );
 
-    if (
-      triggerWords.some((word) =>
-        content.includes(word)
-      )
-    ) {
-      if (Math.random() < 0.08) {
-        const comeback =
-          await generateRoast(
-            "random comeback",
-            message.author.username,
-            message.content
-          );
+    saveReply(message.author.id, reply);
 
-        return message.reply(comeback);
-      }
+    return message.reply(reply);
+  }
+
+  // =========================
+  // RANDOM REPLY
+  // =========================
+
+  const randomChance = Math.floor(Math.random() * 100);
+
+  if (randomChance < 5) {
+
+    let randomReply = await generateRoast(
+      "RANDOM",
+      `Random funny reply to: ${message.content}`
+    );
+
+    if (!isRepeated(message.author.id, randomReply)) {
+
+      saveReply(message.author.id, randomReply);
+
+      return message.reply(randomReply);
     }
   }
-);
+});
 
-// ================= LOGIN =================
+// =========================
+// LOGIN
+// =========================
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN);   
+      
